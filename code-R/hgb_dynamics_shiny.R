@@ -10,8 +10,15 @@ ironODE <- function(time, state, parameters) {
   with(as.list(c(state, parameters)), {
     # Conversion: Effective hemoglobin concentration (g/dL)
     # Healthy state: y = 1.62 corresponds to Hb = 13 g/dL.
-    k <- 13 / 1.62
-    Hb <- y * k  # effective Hb concentration
+    # Convert y (g Fe in Hb) to approximate Hb (g/dL).
+    # 1.62 g Fe in Hb corresponds to 13 g/dL:
+    weight <- 55 #Female weight in [kg]
+    PV <- weight*0.2*0.2 # healthy plasma volume
+    BV <- PV/(1-0.38) #blood volume, 0.38 is healthy hematocrit
+    #####Adjusted to match conversion in matlab code
+    #k <- 13 / 1.62 #previous expression for k
+    k <- 285/(10*BV) #285 is conversion of g Fe to g Hb, BV is blood volume
+    Hb <- y * k
     
     # Compute the logistic parameters for absorption and erythropoiesis
     ca <- y0 - Ba * log((amax - a0) / (a0 - amin))
@@ -39,11 +46,17 @@ ui <- fluidPage(
   sidebarLayout(
     sidebarPanel(
       sliderInput("I", "Daily Iron Intake (mg/day):", 
-                  min = 10, max = 100, value = 55, step = 1),
+                  min = 10, max = 60, value = 30, step = 5),
       sliderInput("e1", "Menstrual Iron Loss (mg/day):", 
-                  min = 0.1, max = 1.0, value = 0.60, step = 0.05),
+                  min = 0.1, max = 1.0, value = 0.60, step = 0.02),
       sliderInput("e2", "Non-menstrual Iron Loss (mg/day):", 
-                  min = 0.5, max = 2.0, value = 1.06, step = 0.05),
+                  min = 0.5, max = 2.0, value = 1.06, step = 0.02),
+      sliderInput("time", "Simulation Time (Months):", 
+                  min = 1, max = 30, value = 3, step = 1), 
+      sliderInput("hb0", "Initial Depletion Level of Iron in Hb (%):", 
+                  min = 0, max = 100, value = 0, step = 10), 
+      sliderInput("obi0", "Initial Levels of Fe in OBI (g):", 
+                  min = 0.5, max = 1, value = 0.7, step = 0.1), 
       sliderInput("d", "RBC Death Rate (per day):", 
                   min = 0.001, max = 0.01, value = 0.0055, step = 0.0001),
       sliderInput("a0", "Normal Absorption Fraction (a0):", 
@@ -62,8 +75,6 @@ ui <- fluidPage(
                   min = 0.02, max = 0.2, value = 0.07, step = 0.005),
       sliderInput("Bh", "Steepness of Erythropoiesis Curve (Bh):", 
                   min = 0.1, max = 2.0, value = 0.5, step = 0.1),
-      sliderInput("time", "Simulation Time (days):", 
-                  min = 30, max = 365, value = 120, step = 10)
     ),
     mainPanel(
       plotOutput("timePlot"),
@@ -76,9 +87,9 @@ ui <- fluidPage(
 server <- function(input, output) {
   parameters <- reactive({
     list(
-      I = input$I,
-      e1 = input$e1,
-      e2 = input$e2,
+      I = input$I/1000,
+      e1 = input$e1/1000,
+      e2 = input$e2/1000,
       d  = input$d,
       a0 = input$a0,
       amin = input$amin,
@@ -88,6 +99,8 @@ server <- function(input, output) {
       hmin = input$hmin,
       hmax = input$hmax,
       Bh = input$Bh,
+      hb0 = input$hb0,
+      obi0 = input$obi0,
       y0 = 13  # set point for hemoglobin (g/dL)
     )
   })
@@ -95,11 +108,11 @@ server <- function(input, output) {
   # Initial conditions:
   # For a healthy woman, 1.62 g Fe in hemoglobin and 0.7 g in OBI.
   state <- reactive({
-    c(x = 0.7, y = 1.62)
+    c(x = input$obi0/k, y = (100-input$hb0)/100*13/k)#1.62/k)
   })
-  
+
   times <- reactive({
-    seq(0, input$time, by = 0.1)
+    seq(0, input$time*30, by = 0.1)
   })
   
   sim <- reactive({
@@ -109,12 +122,14 @@ server <- function(input, output) {
   output$timePlot <- renderPlot({
     sim_data <- as.data.frame(sim())
     # Plot effective hemoglobin (converted from y) and the two compartments
-    p <- ggplot(sim_data, aes(x = time)) +
+    p <- ggplot(sim_data, aes(x = time/30)) +
       geom_line(aes(y = Hb, color = "Effective Hb (g/dL)")) +
       geom_line(aes(y = x, color = "Other Body Iron (g)")) +
       geom_line(aes(y = y, color = "Hb Iron (g)")) +
-      labs(x = "Time (days)", y = "Value", color = "Variable") +
+      labs(x = "Time (Months)", y = "Value", color = "Variable") +
       theme_minimal()
+    scale_y_continuous(limits = c(6, 14), oob = scales::squish)
+      
     print(p)
   })
   
