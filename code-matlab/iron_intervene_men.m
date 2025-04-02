@@ -49,7 +49,7 @@ results = cell(length(dep_hb), length(red_men));
 
 for j = 1:length(dep_hb)
     for k=1:length(red_men)
-        [results{j, k}.T, results{j, k}.Y] = ode45(@(t, x) ironsolve(t, x, Int(j), e1, e2*(1-red_men(k)/100), d, h0, conv), [0 Tend]*30, [OBI0(j); (1-dep_hb(j)/100)*13/conv]);
+        [results{j, k}.T, results{j, k}.Y] = ode45(@(t, x) ironsolve(t, x, Int(j), e1*(1-red_men(k)/100), e2, d, h0, conv), [0 Tend]*30, [OBI0(j); (1-dep_hb(j)/100)*13/conv]);
     end
 end
 
