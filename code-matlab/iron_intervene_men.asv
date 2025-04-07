@@ -140,20 +140,48 @@ legend(legend_labels_1,'Location', 'best')
 plt2 = figure(2);
 set(plt2, 'DefaultAxesColorOrder', colors)
 
+linestyle_handles_2 = [];
+linestyle_labels_2 = {};
+linestyle_map = containers.Map;
 for i=2:length(red_men)
-    subplot(2,length(red_men)-1,i-1)
-    linestyle_counter = 1;
+    subplot(2,length(red_men),i)
+
     hold on
     for k=1:length(hb_int)
         for j=1:length(Int)
             color_idx = mod(k-1, size(colors, 1)) + 1; 
             color = colors(color_idx, :);
-
+            
             for l=1:i-1:i
-                linestyle = line_styles{mod(linestyle_counter-1, length(line_styles)) + 1};
-                linestyle_counter = linestyle_counter + 1;
+                combo_idx = (j - 1) * length(red_men) + l;
+                
+                % Check if linestyle for this combination already exists
+                if ~isKey(linestyle_map, num2str(combo_idx))
+                    % Assign a unique linestyle for this (j, l) combination
+                    linestyle = line_styles{mod(combo_idx - 1, length(line_styles)) + 1};
+                    linestyle_map(num2str(combo_idx)) = linestyle;
+                else
+                    % Use the existing linestyle
+                    linestyle = linestyle_map(num2str(combo_idx));
+                end  
 
-                plot(results{k, j, l}.T/30, results{k, j, l}.Y(:, 2)*conv,'Color', color, 'LineStyle', linestyle, 'DisplayName', sprintf('TXA Efficacy: %.0f%% , DI Supplement Only: %.0f (mg)', red_men(l), Int(j)))
+                h2 = plot(results{k, j, l}.T/30, results{k, j, l}.Y(:, 2)*conv,'LineStyle', linestyle, 'Color', color);
+
+                if k == 1 && j==1 && l==1
+                    linestyle_handles_2 = [linestyle_handles_2, h2];
+                    linestyle_labels_2{end+1} = sprintf('No intervention');
+
+                elseif k == 1 && l==1
+                    linestyle_handles_2 = [linestyle_handles_2, h2];
+                    linestyle_labels_2{end+1} = sprintf('DI Supplement Only: %.0f (mg)', Int(j));
+            
+                elseif k == 1 && j==1
+                    linestyle_handles_2 = [linestyle_handles_2, h2];
+                    linestyle_labels_2{end+1} = sprintf('TXA Only');
+                else 
+                    linestyle_handles_2 = [linestyle_handles_2, h2];
+                    linestyle_labels_2{end+1} = sprintf('TXA + DI Supplement: %.0f (mg)', Int(j));
+                end
             end
         end
     end
@@ -163,10 +191,8 @@ for i=2:length(red_men)
     title(sprintf('TXA Efficiency: %.0f%% Reduction in Menstruation', red_men(i)))
     ylim([8 13])
     hold off
-    legend('Location', 'best', 'Orientation', 'horizontal')
 
-    subplot(2,length(red_men)-1,i+length(red_men)-2)
-    linestyle_counter = 1;
+    subplot(2,length(red_men),i+length(red_men))
     hold on
     for k=1:length(hb_int)
         for j=1:length(Int)
@@ -174,9 +200,11 @@ for i=2:length(red_men)
             color_idx = mod(k-1, size(colors, 1)) + 1; 
             color = colors(color_idx, :);
             for l=1:i-1:i
-                linestyle = line_styles{mod(linestyle_counter-1, length(line_styles)) + 1};
-                linestyle_counter = linestyle_counter + 1;
-                plot(results{k, j, l}.T/30, results{k, j, l}.Y(:, 1), 'Color', color, 'LineStyle', linestyle)
+                combo_idx = (j - 1) * length(red_men) + l;
+                combo_idx = (j - 1) * length(red_men) + l;
+                linestyle = linestyle_map(num2str(combo_idx));
+
+                plot(results{k, j, l}.T/30, results{k, j, l}.Y(:, 1),'LineStyle', linestyle, 'Color', color)
 
             end
             
@@ -187,7 +215,7 @@ for i=2:length(red_men)
     ylabel('Other Body Fe (g)')
     ylim([0.05 0.7])
     hold off
-    
+    legend(linestyle_handles_2, linestyle_labels_2, 'Location', 'best', 'Orientation', 'horizontal')
 end
 
 % plt2 = figure(2);
