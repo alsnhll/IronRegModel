@@ -1,142 +1,264 @@
 # Install required packages if not already installed:
-# install.packages(c("shiny", "deSolve", "ggplot2"))
+# install.packages(c("shiny", "deSolve", "ggplot2", "dplyr", "patchwork"))
 
-library(shiny)
-library(deSolve)
-library(ggplot2)
+{
+  library(shiny)
+  library(deSolve)
+  library(ggplot2)
+  library(dplyr)
+  library(purrr)
+  library(patchwork)
+}
 
-# Define the ODE system for iron metabolism
+###############################################################################
+# 1) Fixed parameters from the supplement/paper
+###############################################################################
+
+{
+  params <- list(
+    d    = 0.0055,      
+    a0   = 0.03,
+    amin = 0.01,
+    amax = 0.20,
+    Ba   = 0.1,
+    Bh   = 0.062, 
+    weight = 55,               # [kg] female weight
+    e1 = 0.00060,              # [g/day] baseline daily menstrual excretion, as long as body Fe > 0. (0.001)
+    e2   = 0.00106,            # [g/day] baseline daily other excretion, as long as body Fe > 0. (0.001)
+    y0 = 13                    # [g/dL] "Healthy" Hb levels
+  )
+  
+  # Derived constants
+  PV <- params$weight*0.2*0.2  # healthy plasma volume
+  BV <- PV/(1-0.38)            # blood volume, 0.38 is healthy hematocrit
+  conv <- 285/(10*BV)          # 285 is conversion of g Fe to g Hb, BV is blood volume
+}
+
+###############################################################################
+# 2) Supporting functions
+###############################################################################
+{
+  #Absorption Fraction
+  absp <- function(hb) {
+    ca <- params$y0/conv - params$Ba * 
+      log((params$amax - params$a0) / (params$a0 - params$amin))
+    a <- params$amin + (params$amax - params$amin) / (1 + exp((hb - ca) / base_params$Ba))
+    return(a)
+  }
+  
+  #Erythropoiesis Fraction
+  eryth <- function(hb) {
+    h0 <- (params$d * (params$y0 / conv) + params$e1) / 0.7
+    hmin <- 0.7 * h0
+    hmax <- 5 * h0
+    ch <- params$y0 / conv - params$Bh * log((hmax - h0) / (h0 - hmin))
+    e <- hmin + (hmax - hmin) / (1 + exp((hb - ch) / params$Bh))
+    return(e)
+  }
+  
+  #Initial Iron Stores in Other Body
+  OBI0 <- function(hb_int, e1) {
+    o <- ((hb_int / conv) * params$d + e1) / eryth(hb_int / conv)
+    return(o)
+  }
+  
+  #Steady-state intake to maintain anemia
+  I <- function(dep_hb, e1) {
+    i <- (e1 + params$e2) / absp(dep_hb / conv)
+    return(i)
+  }
+}
+
+###############################################################################
+# 3) ODE system
+###############################################################################
+
 ironODE <- function(time, state, parameters) {
   with(as.list(c(state, parameters)), {
-    # Conversion: Effective hemoglobin concentration (g/dL)
-    # Healthy state: y = 1.62 corresponds to Hb = 13 g/dL.
-    # Convert y (g Fe in Hb) to approximate Hb (g/dL).
-    # 1.62 g Fe in Hb corresponds to 13 g/dL:
-    weight <- 55 #Female weight in [kg]
-    PV <- weight*0.2*0.2 # healthy plasma volume
-    BV <- PV/(1-0.38) #blood volume, 0.38 is healthy hematocrit
-    #####Adjusted to match conversion in matlab code
-    #k <- 13 / 1.62 #previous expression for k
-    k <- 285/(10*BV) #285 is conversion of g Fe to g Hb, BV is blood volume
-    Hb <- y * k
     
-    # Compute the logistic parameters for absorption and erythropoiesis
-    ca <- y0 - Ba * log((amax - a0) / (a0 - amin))
-    ch <- y0 - Bh * log((hmax - h0) / (h0 - hmin))
+    x <- state["x"]  # Other Body Iron
+    y <- state["y"]  # Iron in Hemoglobin
     
-    # Logistic function for iron absorption fraction:
-    absp <- amin + (amax - amin) / (1 + exp((Hb - ca) / Ba))
+    dx <- I * absp(y) + d * y - eryth(y) * x - params$e2
+    dy <- eryth(y) * x - d * y - e1
     
-    # Logistic function for erythropoiesis rate:
-    eryth <- hmin + (hmax - hmin) / (1 + exp((Hb - ch) / Bh))
-    
-    # Differential equations:
-    # x: iron in "other body iron" (OBI)
-    # y: iron bound in hemoglobin (Hb)
-    dx <- I * absp + d * y - eryth * x - e2
-    dy <- eryth * x - d * y - e1
-    
-    list(c(dx, dy), Hb = Hb, absp = absp, eryth = eryth)
+    return(list(c(dx, dy)))
   })
 }
 
-# Define the Shiny UI
+###############################################################################
+# 4) Run the Simulation
+###############################################################################
+
+run_sim <- function(hb_int, Int, red_men, hev_per, Tend) {
+  OBI <- OBI0(hb_int, params$e1 * hev_per)
+  Int_ss <- I(hb_int, params$e1 * hev_per)
+  times <- seq(0, Tend * 30, by = 1)
+  parameters <- c(params, list(
+    I = Int_ss + Int / 1000,
+    e1 = params$e1 * (1 - red_men / 100) * hev_per
+  ))
+  state_init <- c(x = OBI, y = hb_int / conv)
+  
+  out <- ode(
+    y = state_init,
+    times = times,
+    func = ironODE,
+    parms = parameters
+  )
+  
+  df <- as.data.frame(out)
+  df$hb <- df$y * conv
+  df$hb_int <- hb_int
+  df$int <- Int
+  df$red_men <- red_men
+  df$hev_per <- hev_per
+  return(df)
+}
+
+###############################################################################
+# 5) Define the Shiny UI
+###############################################################################
+
 ui <- fluidPage(
-  titlePanel("Iron Metabolism Model Simulation"),
+  titlePanel("Iron Metabolism Simulation"),
   sidebarLayout(
-    sidebarPanel(
-      sliderInput("I", "Daily Iron Intake (mg/day):", 
-                  min = 10, max = 60, value = 30, step = 5),
-      sliderInput("e1", "Menstrual Iron Loss (mg/day):", 
-                  min = 0.1, max = 1.0, value = 0.60, step = 0.02),
-      sliderInput("e2", "Non-menstrual Iron Loss (mg/day):", 
-                  min = 0.5, max = 2.0, value = 1.06, step = 0.02),
-      sliderInput("time", "Simulation Time (Months):", 
-                  min = 1, max = 30, value = 3, step = 1), 
-      sliderInput("hb0", "Initial Depletion Level of Iron in Hb (%):", 
-                  min = 0, max = 100, value = 0, step = 10), 
-      sliderInput("obi0", "Initial Levels of Fe in OBI (g):", 
-                  min = 0.5, max = 1, value = 0.7, step = 0.1), 
-      sliderInput("d", "RBC Death Rate (per day):", 
-                  min = 0.001, max = 0.01, value = 0.0055, step = 0.0001),
-      sliderInput("a0", "Normal Absorption Fraction (a0):", 
-                  min = 0.01, max = 0.05, value = 0.03, step = 0.005),
-      sliderInput("amin", "Minimum Absorption Fraction (amin):", 
-                  min = 0.001, max = 0.02, value = 0.01, step = 0.001),
-      sliderInput("amax", "Maximum Absorption Fraction (amax):", 
-                  min = 0.1, max = 0.5, value = 0.2, step = 0.01),
-      sliderInput("Ba", "Steepness of Absorption Curve (Ba):", 
-                  min = 0.1, max = 2.0, value = 0.8, step = 0.1),
-      sliderInput("h0", "Baseline Erythropoiesis Rate (h0, g/day):", 
-                  min = 0.005, max = 0.05, value = 0.014, step = 0.001),
-      sliderInput("hmin", "Minimum Erythropoiesis Rate (hmin):", 
-                  min = 0.005, max = 0.02, value = 0.0098, step = 0.001),
-      sliderInput("hmax", "Maximum Erythropoiesis Rate (hmax):", 
-                  min = 0.02, max = 0.2, value = 0.07, step = 0.005),
-      sliderInput("Bh", "Steepness of Erythropoiesis Curve (Bh):", 
-                  min = 0.1, max = 2.0, value = 0.5, step = 0.1),
+    sidebarPanel(width = 3, 
+       checkboxGroupInput("hb_int", "Initial Hemoglobin (g/dL):", 
+                   choices = c(8, 9, 10, 11, 12), selected = 10),
+       checkboxGroupInput("red_men", "Reduction of Menstruation (TXA Efficacy) (%):", 
+                   choices = c(0, 25, 37, 50), selected = 25), 
+       sliderInput("hev_per", "Period Heaviness (# times from normal):", 
+                   min = 0.5, max = 5, value = 1, step = 0.5), 
+       sliderInput("Int", "Daily Iron Supplement (mg/day):", 
+                   min = 0, max = 60, value = 10, step = 1),
+       sliderInput("time", "Time (Months):", 
+                   min = 1, max = 30, value = 24, step = 1),
+       actionButton("simulate", "Run Simulation")
     ),
     mainPanel(
-      plotOutput("timePlot"),
-      verbatimTextOutput("modelInfo")
+      width = 9,
+      plotOutput("simulationPlot", height = "600px")
+    )
+  ),
+  
+  fluidRow(
+    column(12,
+           DT::dataTableOutput("summary_table")
     )
   )
 )
 
-# Define the Shiny server
-server <- function(input, output) {
-  parameters <- reactive({
-    list(
-      I = input$I/1000,
-      e1 = input$e1/1000,
-      e2 = input$e2/1000,
-      d  = input$d,
-      a0 = input$a0,
-      amin = input$amin,
-      amax = input$amax,
-      Ba = input$Ba,
-      h0 = input$h0,
-      hmin = input$hmin,
-      hmax = input$hmax,
-      Bh = input$Bh,
-      hb0 = input$hb0,
-      obi0 = input$obi0,
-      y0 = 13  # set point for hemoglobin (g/dL)
-    )
-  })
-  
-  # Initial conditions:
-  # For a healthy woman, 1.62 g Fe in hemoglobin and 0.7 g in OBI.
-  state <- reactive({
-    c(x = input$obi0/k, y = (100-input$hb0)/100*13/k)#1.62/k)
-  })
+###############################################################################
+# 6) Define the Shiny Server
+###############################################################################
 
-  times <- reactive({
-    seq(0, input$time*30, by = 0.1)
+server <- function(input, output) {
+  sim_data <- eventReactive(input$simulate, {
+    req(length(input$hb_int), length(input$red_men), length(input$hev_per), length(input$Int))
+    grid <- expand.grid(
+      hb_int = as.numeric(input$hb_int),
+      red_men = as.numeric(input$red_men),
+      hev_per = as.numeric(input$hev_per),
+      Int = as.numeric(input$Int),
+      stringsAsFactors = FALSE
+    )
+    grid$row <- seq_len(nrow(grid))
+    
+    pmap_dfr(grid, function(hb_int, red_men, hev_per, Int, row) {
+      df <- run_sim(hb_int, Int, red_men, hev_per, Tend = input$time)
+      return(df)
+    })
+  })
+ 
+  #Print a table which summarizes the scenarios and initial conditions 
+  summary_table <- eventReactive(input$simulate, {
+    req(length(input$hb_int), length(input$red_men), length(input$hev_per), length(input$Int))
+    selected_inputs <- expand.grid(
+      hb_int = as.numeric(input$hb_int),
+      red_men = as.numeric(input$red_men),
+      hev_per = as.numeric(input$hev_per),
+      Int = as.numeric(input$Int),
+      stringsAsFactors = FALSE
+    )
+    
+    selected_inputs <- selected_inputs %>%
+      mutate(
+        treatment = case_when(
+          Int == 0 & red_men == 0 ~ "No Treatment",
+          Int == 0 & red_men > 0  ~ "TXA Only",
+          Int > 0 & red_men == 0  ~ "Supplement Only",
+          Int > 0 & red_men > 0   ~ "TXA + Supplement"
+        ),
+        treatment_label = case_when(
+          treatment == "Supplement Only" ~ paste0("Supplement Only: ", Int, " mg"),
+          treatment == "TXA + Supplement" ~ paste0("TXA + Supplement: ", Int, " mg"),
+          TRUE ~ treatment
+        )
+      )
+    
+    selected_inputs %>%
+      mutate(
+        OBI = OBI0(hb_int, input_params$e1 * hev_per),
+        Int_ss = I(hb_int, input_params$e1 * hev_per)
+      ) %>%
+      transmute(
+        `Initial Hb (g/dL)` = hb_int,
+        `Period Heaviness (x)` = hev_per,
+        `TXA Efficacy (%)` = red_men,
+        `Iron Supplement (mg/day)` = Int,
+        `Treatment` = treatment_label,
+        `Initial Body Iron (g)` = round(OBI, 3),
+        `Steady-State Intake (mg/day)` = round(Int_ss*1000, 3)
+      )
   })
   
-  sim <- reactive({
-    ode(y = state(), times = times(), func = ironODE, parms = parameters())
+  ###############################################################################
+  # 7) Outputs
+  ############################################################################### 
+  
+  output$simulationPlot <- renderPlot({
+    req(sim_data())
+    df <- sim_data()
+    
+    p1 <- ggplot(df, aes(x = time / 30, y = hb, color = factor(hb_int), linetype = factor(red_men))) +
+      geom_line(linewidth = 0.5) +
+      labs(
+        x = "Time (months)", 
+        y = "Hb (g/dL)", 
+        color = "Initial Hb Level [g/dL]", 
+        linetype = "% Reduction of Menstruation"
+      ) +
+      #scale_x_continuous(limits = c(0, 24), breaks = seq(0, 24, 3)) +
+      scale_y_continuous(limits = c(8, 13), breaks = seq(8, 13, 0.5)) +
+      theme_minimal(base_size = 16) 
+    
+    p2 <- ggplot(df, aes(x = time / 30, y = x, color = factor(hb_int), linetype = factor(red_men))) +
+      geom_line(linewidth = 0.5) +
+      labs(
+        x = "Time (months)", 
+        y = "Body Iron (g)",
+        color = "Initial Hb Level [g/dL]", 
+        linetype = "% Reduction of Menstruation"
+      ) +
+      #scale_x_continuous(limits = c(0, 24), breaks = seq(0, 24, 3)) +
+      #scale_y_continuous(limits = c(0.05, 0.5), breaks = seq(0.05, 0.5, 0.05)) +
+      theme_minimal(base_size = 16) 
+    
+    p1 / p2 + plot_layout(guides = "collect")  & 
+      theme(legend.position = "bottom", legend.direction = "horizontal")
   })
   
-  output$timePlot <- renderPlot({
-    sim_data <- as.data.frame(sim())
-    # Plot effective hemoglobin (converted from y) and the two compartments
-    p <- ggplot(sim_data, aes(x = time/30)) +
-      geom_line(aes(y = Hb, color = "Effective Hb (g/dL)")) +
-      geom_line(aes(y = x, color = "Other Body Iron (g)")) +
-      geom_line(aes(y = y, color = "Hb Iron (g)")) +
-      labs(x = "Time (Months)", y = "Value", color = "Variable") +
-      theme_minimal()
-    scale_y_continuous(limits = c(6, 14), oob = scales::squish)
-      
-    print(p)
-  })
-  
-  output$modelInfo <- renderPrint({
-    tail(as.data.frame(sim()), 5)
-  })
+  output$summary_table <- DT::renderDataTable({
+    summary_table()
+  }, options = list(
+    pageLength = 10,
+    scrollX = TRUE
+  )
+  )
 }
 
-# Run the Shiny app
+###############################################################################
+# 8) Run the Shiny App
+############################################################################### 
 shinyApp(ui = ui, server = server)
