@@ -19,7 +19,7 @@
 % Written by Alison Hill, alhill@fas.harvard.edu, last updated Sept 21 2010
 % Modified by ET, March 20 2025
 
-% function iron_intervene_men
+function iron_intervene_men
 
 %%%%%%%%%%%%%%%%% Input parameters %%%%%%%%%%%%%%%%%%%%%%%%
 weight = 55;                        % [kg] female weight
@@ -514,13 +514,17 @@ for j = 1:length(hb_int)
     for k=1:length(Int)
         for i=1:length(red_men)
             for l=1:length(hev_per)
-                OBI0 = results_3_p1{j, k, i, l}.Y(end, 1);
-                HbFe0 = results_3_p1{j, k, i, l}.Y(end, 2); 
+                OBI0 = results_3_p2{j, k, i, l}.Y(end, 1);
+                HbFe0 = results_3_p2{j, k, i, l}.Y(end, 2); 
                 [results_3_p2{j, k, i, l}.T, results_3_p2{j, k, i, l}.Y] = ode45(@(t, x) ironsolve(t, x, Int_ss(j)+Int_stop(k)/1000, hev_per(l)*e1*(1-red_men(i)/100), e2, d, h0, conv), [0 Tend-Tend_int]*30, [OBI0; HbFe0]);
             end
         end
     end
 end
+
+%fix times
+
+results_3_p2.T = results_3_p2.T + Tend_int;
 
 %join
 
@@ -530,115 +534,12 @@ for j = 1:length(hb_int)
     for k=1:length(Int)
         for i=1:length(red_men)
             for l=1:length(hev_per)
-                results_3{j, k, i, l}.T = [results_3_p1{j, k, i, l}.T; (results_3_p2{j, k, i, l}.T + Tend_int*30)];
-                results_3{j, k, i, l}.Y = [results_3_p1{j, k, i, l}.Y; results_3_p2{j, k, i, l}.Y];
+                results_3{j, k, i, l}.T = [results_3_p1{j, k, i, l}.T; results_3_p2{j, k, i, l}.T];
+                results_3{j, k, i, l}.Y = [results_3_p1{j, k, i, l}.T; results_3_p2{j, k, i, l}.T];
             end
         end
     end
 end
-
-plt6 = figure(6);
-
-plt6.Color = [1 1 1];
-
-set(plt6, 'DefaultAxesColorOrder', colors,'DefaultAxesFontSize',14)
-linestyle_handles_4 = [];
-linestyle_labels_4 = {};
-color_handles_4 = [];
-color_labels_4 = {};
-
-for i=2:length(red_men)
-    subplot(2,length(red_men)-1,i-1)
-    linestyle_counter = 1;
-    hold on
-    for k=1:length(hev_per)
-        for j=1:length(Int)
-            color_idx = mod(k-1, size(colors, 1)) + 1; 
-            color = colors(color_idx, :);
-
-            for l=1:i-1:i
-                linestyle = line_styles{mod(linestyle_counter-1, length(line_styles)) + 1};
-                linestyle_counter = linestyle_counter + 1;
-
-                h4 = plot(results_3{1, j, l, k}.T/30, results_3{1, j, l, k}.Y(:, 2)*conv,'LineStyle', linestyle, 'Color', color, 'Linewidth', 2);
-                            
-                if i == 2 && j == 1 && l == 1
-                    color_handles_4 = [color_handles_4, h4];
-                    
-                    if hev_per(k) == 1
-                        color_labels_4{end+1} = sprintf('Normal Periods: %.1f mg/day', e1*1000);
-                    else
-                        color_labels_4{end+1} = sprintf('%.1fx Heavier Periods: %.1f mg/day', hev_per(k),hev_per(k)*e1*1000);
-                    end
-                end
-            end
-        end
-    end
-
-    xlabel('Time (months)')
-    ylabel('Hemoglobin (g/dL)')
-    title(sprintf('TXA Efficiency: %.0f%% Reduction in Menstruation', red_men(i)))
-    ylim([8 13])
-    xlim([0 24])
-    yticks(8:0.5:13)
-    xticks(0:3:24)
-    grid on
-    legend(color_handles_4, color_labels_4, 'Location', 'Best', 'Orientation', 'horizontal')
-    hold off
-    
-
-    subplot(2,length(red_men)-1,i+length(red_men)-2)
-    linestyle_counter = 1;
-    hold on
-    
-    linestyle_handles_2 = [];
-    linestyle_labels_2 = {};
-
-    for k=1:length(hev_per)
-        for j=1:length(Int)
-             
-            color_idx = mod(k-1, size(colors, 1)) + 1; 
-            color = colors(color_idx, :);
-            
-            for l=1:i-1:i
-                linestyle = line_styles{mod(linestyle_counter-1, length(line_styles)) + 1};
-                linestyle_counter = linestyle_counter + 1;
-                
-                h4 = plot(results_3{1, j, l, k}.T/30, results_3{1, j, l, k}.Y(:, 1),'LineStyle', linestyle, 'Color', color, 'Linewidth', 2);
-                
-                if k==1
-                    linestyle_handles_2 = [linestyle_handles_2, h4];
-
-                    if l == 1 && j == 1
-                        linestyle_labels_2{end+1} = sprintf('No Intervention');
-                
-                    elseif j == 1 && l == i
-                        linestyle_labels_2{end+1} = sprintf('TXA Only');
-                
-                    elseif j == 2 && l == 1
-                        linestyle_labels_2{end+1} = sprintf('Supplement Only: %.1f (mg)', Int(j));
-
-                    elseif j == 2
-                        linestyle_labels_2{end+1} = sprintf('TXA + Supplement: %.1f (mg)', Int(j));
-                    end
-                end
-            end
-            
-        end
-    end
-    
-    xlabel('Time (months)')
-    ylabel('Other Body Fe (g)')
-    ylim([0.05 0.4])
-    xlim([0 24])
-    xticks(0:3:24)
-    grid on
-    hold off   
-end
-
-legend(linestyle_handles_2, linestyle_labels_2, 'Location', 'Best', 'Orientation', 'horizontal')
-
-
 %%%%%%%%% All interventions %%%%%%%%%%%
 
 plt5= figure(5);
@@ -847,4 +748,4 @@ ylabel('Actual Absorption [mg]')
 hold off
 
 
-%end
+end
