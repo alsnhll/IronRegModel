@@ -21,67 +21,31 @@
 
 % function iron_intervene_men
 
-%%%%%%%%%%%%%%%%% Input parameters %%%%%%%%%%%%%%%%%%%%%%%%
-weight = 55;                        % [kg] female weight
-e1 = 0.00060;                       % [g/day] baseline daily menstrual excretion, as long as body Fe > 0. (0.001)
-e2 = 0.00106;                       % [g/day] baseline daily other excretion, as long as body Fe > 0. (0.001)
-Tend = 24;                          % [months] time to run simulation
-hb0 = 13;                           % [g/dL] "Healthy" Hb levels
+
+%%%%%%%%%%%%%%%%% Simulation parameters %%%%%%%%%%%%%%%%%%%%%%%%
+
 hb_int = [8];                      % [g/dL] Initial level of iron in Hb (anemia < 12)
 red_men = [0, 25, 37, 50];          % Percent reduction in Fe lost to menstruation
 Int = [0, 10];               % Daily intake supplement [mg/day]
 hev_per = [1, 2, 4];                % #Times heavier menstruation
+Tend = 24;                          % [months] time to run simulation
 
-%%%%%%%%%%%%%%%%% Conversion %%%%%%%%%%%%%%%%%%%%%%%%
+%%%%%%%%%%%%%%%%% Model parameters %%%%%%%%%%%%%%%%%%%%%%%%
+weight = 55;                        % [kg] female weight
+e1 = 0.00060;                       % [g/day] baseline daily menstrual excretion, as long as body Fe > 0. (0.001)
+e2 = 0.00106;                       % [g/day] baseline daily other excretion, as long as body Fe > 0. (0.001)
+d=0.0055;                           % [/day] rate of Hb turnover, goes back to body iron,=1/death rate=ln(2)/half life, half life=127 days
+hb0 = 13;                           % [g/dL] Hb levels at which "baseline" absorption and erythropoiesis ratesapplies
+h0=(d*(hb0/conv)+e1)/0.7;           % 0.013; % [/day] erythropoiesis rate (of body iron going to HB iron). 
+                                    % Calculated to get s.s. with normal [Fe]'s
+
+%%%%%%%%%%%%%%%%% Conversions %%%%%%%%%%%%%%%%%%%%%%%%
 PV=weight*0.2*0.2;                  % healthy plasma volume 
 BV=PV/(1-0.38);                     % blood volume, 0.38 is healthy hematocrit
 conv=285/(10*BV);                   % 285 is conversion of g Fe to g Hb, BV is blood volume
 
-%%%%%%%%%%%%%%%%% Steady-State Scenario %%%%%%%%%%%%%%%%%%%%%%%%
-d=0.0055;                           % [/day] rate of Hb turnover, goes back to body iron,=1/death rate=ln(2)/half life, half life=127 days
-h0=(d*(hb0/conv)+e1)/0.7;           % 0.013; % [/day] erythropoiesis rate (of body iron going to HB iron). 
-                                    % Calculated to get s.s. with normal [Fe]'s
+%%%%%%%%%%%%%%%%% Plotting settings %%%%%%%%%%%%%%%%%%%%%%%%
 
-% Expected steady state iron stores for a given chronic anemic [Hb]
-OBI0 = ((hb_int/conv)*d+e1)./eryth(hb_int/conv,h0,conv); % Fe in OBI based on SS anemia value
-Int_ss = (e1+e2)./absp(hb_int/conv,conv);     % [g/day] daily intake to maintain SS anemia value
-
-%OBI0 = (((1-dep_hb/100)*hb0/conv)*d+e1)./eryth((1-dep_hb/100)*hb0/conv,h0,conv); % Fe in OBI based on SS anemia value
-%Int_ss = (e1+e2)./absp((1-dep_hb/100)*hb0/conv,conv);     % [g/day] daily intake to maintain SS anemia value
-
-%%%%%%%%%%%%%%%%%%%% Display Results %%%%%%%%%%%%%%%%%%%%%%%%
-for i = 1:length(hb_int)
-    fprintf('Scenario %d:\n', i);
-    fprintf('Initial Hb level [mg/dL]: %.1f\n', hb_int(i));
-    fprintf('Fe in OBI: %.4f g\n', OBI0(i));
-    fprintf('S.S. Intake values: %.1f mg/day\n', Int_ss(i)*1000);
-    fprintf('\n');
-end
-%% 
-%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-%%%%%%%%%%%%%%%%% Intervention of Menstruation Reduction %%%%%%%%%%%%%%%%%%%%%%%%
-
-%%%%%% For menstruation intervention
-
-% results = cell(length(dep_hb), length(red_men));
-% for j = 1:length(dep_hb)
-%     for k=1:length(red_men)
-%         [results{j, k}.T, results{j, k}.Y] = ode45(@(t, x) ironsolve(t, x, Int_ss(j), e1*(1-red_men(k)/100), e2, d, h0, conv), [0 Tend]*30, [OBI0(j); (1-dep_hb(j)/100)*13/conv]);
-%     end
-% end
-
-%%%%%%% Single Participant, Hb vs. Time curves
-
-%SS Anemia due to low iron intake, for regular periods
-results = cell(length(hb_int), length(Int), length(red_men));
-
-for j = 1:length(hb_int)
-    for k=1:length(Int)
-        for i=1:length(red_men)
-            [results{j, k, i}.T, results{j, k, i}.Y] = ode45(@(t, x) ironsolve(t, x, Int_ss(j)+Int(k)/1000, e1*(1-red_men(i)/100), e2, d, h0, conv), [0 Tend]*30, [OBI0(j); hb_int(j)/conv]);
-        end
-    end
-end
 
 line_styles = {'-', '--', '-.',':', };  % Define linestyles
 colors = [
@@ -96,141 +60,171 @@ colors = [
     0.5, 0.5, 0.5    % Gray
 ];
 
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%%%% SCENARIO 1: Anemia due to low iron intake only %%%%%%%%%%%%%%%%%%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+
+% Expected steady state iron stores for a given chronic anemic [Hb]
+OBI0 = ((hb_int/conv)*d+e1)./eryth(hb_int/conv,h0,conv); % Fe in OBI based on SS anemia value
+Int_ss = (e1+e2)./absp(hb_int/conv,conv);     % [g/day] daily intake to maintain SS anemia value
+
+%Display Results
+for i = 1:length(hb_int)
+    fprintf('Initial Hb level [mg/dL]: %.1f\n', hb_int(i));
+    fprintf('Fe in OBI: %.4f g\n', OBI0(i));
+    fprintf('S.S. Intake values: %.1f mg/day\n', Int_ss(i)*1000);
+    fprintf('\n');
+end
+
+%SS Anemia due to low iron intake, for regular periods
+results = cell(length(hb_int), length(Int), length(red_men));
+
+for j = 1:length(hb_int)
+    for k=1:length(Int)
+        for i=1:length(red_men)
+            [results{j, k, i}.T, results{j, k, i}.Y] = ode45(@(t, x) ironsolve(t, x, Int_ss(j)+Int(k)/1000, e1*(1-red_men(i)/100), e2, d, h0, conv), [0 Tend]*30, [OBI0(j); hb_int(j)/conv]);
+        end
+    end
+end
+
+
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-%%%%% INTERVENTION 1: TXA only for steady-state anemia %%%%%%%%%%%
+%%%%% INTERVENTION 1.1: TXA only for steady-state anemia %%%%%%%%%%%
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
 
-% plt1 = figure(1);
-% 
-% plt1.Color = [1 1 1];
-% 
-% set(plt1, 'DefaultAxesColorOrder', colors, 'DefaultAxesFontSize',14)
-% legend_handles_1 = [];
-% legend_labels_1 = {};
-% 
-% for i=1:length(red_men)
-%     subplot(2,length(red_men),i)
-%     hold on
-%     for k=1:length(hb_int)
-%         h1=plot(results{k, 1, i}.T/30, results{k, 1, i}.Y(:, 2)*conv, 'LineWidth', 2);
-%         legend_handles_1 = [legend_handles_1, h1];
-%         legend_labels_1{end+1} = sprintf('Initial Hb: %.0f (mg/dL)', hb_int(k));
-%     end
-%     
-%     xlabel('Time (months)')
-%     ylabel('Hemoglobin (g/dL)')
-%     title(sprintf('TXA Efficiency: %.0f%% Reduction in Menstruation', red_men(i)))
-%     ylim([8 13])
-%     xlim([0 24])
-%     xticks(0:3:24)
-%     grid on
-%     hold off
-% 
-%     subplot(2,length(red_men),i+length(red_men))
-%     hold on
-%     for k=1:length(hb_int)
-%         plot(results{k, 1, i}.T/30, results{k, 1, i}.Y(:, 1), 'LineWidth', 2)
-%     end
-%     
-%     xlabel('Time (months)')
-%     ylabel('Other Body Fe (g)')
-%     ylim([0.05 0.4])
-%     xlim([0 24])
-%     xticks(0:3:24)
-%     grid on
-%     hold off
-% end
+plt1 = figure(1);
+
+plt1.Color = [1 1 1];
+
+set(plt1, 'DefaultAxesColorOrder', colors, 'DefaultAxesFontSize',14)
+legend_handles_1 = [];
+legend_labels_1 = {};
+
+for i=1:length(red_men)
+    subplot(2,length(red_men),i)
+    hold on
+    for k=1:length(hb_int)
+        h1=plot(results{k, 1, i}.T/30, results{k, 1, i}.Y(:, 2)*conv, 'LineWidth', 2);
+        legend_handles_1 = [legend_handles_1, h1];
+        legend_labels_1{end+1} = sprintf('Initial Hb: %.0f (mg/dL)', hb_int(k));
+    end
+    
+    xlabel('Time (months)')
+    ylabel('Hemoglobin (g/dL)')
+    title(sprintf('TXA Efficiency: %.0f%% Reduction in Menstruation', red_men(i)))
+    ylim([8 13])
+    xlim([0 24])
+    xticks(0:3:24)
+    grid on
+    hold off
+
+    subplot(2,length(red_men),i+length(red_men))
+    hold on
+    for k=1:length(hb_int)
+        plot(results{k, 1, i}.T/30, results{k, 1, i}.Y(:, 1), 'LineWidth', 2)
+    end
+    
+    xlabel('Time (months)')
+    ylabel('Other Body Fe (g)')
+    ylim([0.05 0.4])
+    xlim([0 24])
+    xticks(0:3:24)
+    grid on
+    hold off
+end
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-%%%%% INTERVENTION 2: TXA + Supplement for steady-state anemia %%%%%%%%%%%
+%%%%% INTERVENTION 1.2: TXA + Supplement for steady-state anemia %%%%%%%%%%%
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
-% plt2 = figure(2);
-% 
-% plt2.Color = [1 1 1];
-% 
-% set(plt2, 'DefaultAxesColorOrder', colors,'DefaultAxesFontSize',14)
-% 
-% for i=2:length(red_men)
-%     subplot(2,length(red_men)-1,i-1)
-%     linestyle_counter = 1;
-%     hold on
-% 
-%     for k=1:length(hb_int)
-%         for j=1:length(Int)
-%             color_idx = mod(k-1, size(colors, 1)) + 1; 
-%             color = colors(color_idx, :);
-% 
-%             for l=1:i-1:i
-%                 linestyle = line_styles{mod(linestyle_counter-1, length(line_styles)) + 1};
-%                 linestyle_counter = linestyle_counter + 1;
-% 
-%                 plot(results{k, j, l}.T/30, results{k, j, l}.Y(:, 2)*conv,'Color', color, 'LineStyle', linestyle, 'LineWidth',2)
-%             end
-%         end
-%     end
-% 
-%     xlabel('Time (months)')
-%     ylabel('Hemoglobin (g/dL)')
-%     title(sprintf('TXA Efficiency: %.0f%% Reduction in Menstruation', red_men(i)))
-%     ylim([8 13])
-%     xlim([0 24])
-%     xticks(0:3:24)
-%     grid on
-%     hold off
-% 
-%     subplot(2,length(red_men)-1,i+length(red_men)-2)
-%     linestyle_counter = 1;
-%     hold on
-%     
-%     linestyle_handles_2 = [];
-%     linestyle_labels_2 = {};
-% 
-%     for k=1:length(hb_int)
-%         for j=1:length(Int)
-%              
-%             color_idx = mod(k-1, size(colors, 1)) + 1; 
-%             color = colors(color_idx, :);
-% 
-%             for l=1:i-1:i
-%                 linestyle = line_styles{mod(linestyle_counter-1, length(line_styles)) + 1};
-%                 linestyle_counter = linestyle_counter + 1;
-%                 
-%                 h2 = plot(results{k, j, l}.T/30, results{k, j, l}.Y(:, 1), 'Color', color, 'LineStyle', linestyle, 'LineWidth',2);
-%                 
-%                 if k==1
-%                     linestyle_handles_2 = [linestyle_handles_2, h2];
-% 
-%                     if l == 1 && j == 1
-%                         linestyle_labels_2{end+1} = sprintf('No Intervention');
-%                 
-%                     elseif j == 1 && l == i
-%                         linestyle_labels_2{end+1} = sprintf('TXA Only');
-%                 
-%                     elseif j == 2 && l == 1
-%                         linestyle_labels_2{end+1} = sprintf('Supplement Only: %.1f (mg)', Int(j));
-% 
-%                     elseif j == 2
-%                         linestyle_labels_2{end+1} = sprintf('TXA + Supplement: %.1f (mg)', Int(j));
-%                     end
-%                 end
-%             end
-%             
-%         end
-%     end
-%     
-%     xlabel('Time (months)')
-%     ylabel('Other Body Fe (g)')
-%     ylim([0.05 0.4])
-%     xlim([0 24])
-%     xticks(0:3:24)
-%     grid on
-%     hold off   
-% end
-% 
-% legend(linestyle_handles_2, linestyle_labels_2, 'Location', 'Best', 'Orientation', 'horizontal')
-% 
+plt2 = figure(2);
+
+plt2.Color = [1 1 1];
+
+set(plt2, 'DefaultAxesColorOrder', colors,'DefaultAxesFontSize',14)
+
+for i=2:length(red_men)
+    subplot(2,length(red_men)-1,i-1)
+    linestyle_counter = 1;
+    hold on
+
+    for k=1:length(hb_int)
+        for j=1:length(Int)
+            color_idx = mod(k-1, size(colors, 1)) + 1; 
+            color = colors(color_idx, :);
+
+            for l=1:i-1:i
+                linestyle = line_styles{mod(linestyle_counter-1, length(line_styles)) + 1};
+                linestyle_counter = linestyle_counter + 1;
+
+                plot(results{k, j, l}.T/30, results{k, j, l}.Y(:, 2)*conv,'Color', color, 'LineStyle', linestyle, 'LineWidth',2)
+            end
+        end
+    end
+
+    xlabel('Time (months)')
+    ylabel('Hemoglobin (g/dL)')
+    title(sprintf('TXA Efficiency: %.0f%% Reduction in Menstruation', red_men(i)))
+    ylim([8 13])
+    xlim([0 24])
+    xticks(0:3:24)
+    grid on
+    hold off
+
+    subplot(2,length(red_men)-1,i+length(red_men)-2)
+    linestyle_counter = 1;
+    hold on
+    
+    linestyle_handles_2 = [];
+    linestyle_labels_2 = {};
+
+    for k=1:length(hb_int)
+        for j=1:length(Int)
+             
+            color_idx = mod(k-1, size(colors, 1)) + 1; 
+            color = colors(color_idx, :);
+
+            for l=1:i-1:i
+                linestyle = line_styles{mod(linestyle_counter-1, length(line_styles)) + 1};
+                linestyle_counter = linestyle_counter + 1;
+                
+                h2 = plot(results{k, j, l}.T/30, results{k, j, l}.Y(:, 1), 'Color', color, 'LineStyle', linestyle, 'LineWidth',2);
+                
+                if k==1
+                    linestyle_handles_2 = [linestyle_handles_2, h2];
+
+                    if l == 1 && j == 1
+                        linestyle_labels_2{end+1} = sprintf('No Intervention');
+                
+                    elseif j == 1 && l == i
+                        linestyle_labels_2{end+1} = sprintf('TXA Only');
+                
+                    elseif j == 2 && l == 1
+                        linestyle_labels_2{end+1} = sprintf('Supplement Only: %.1f (mg)', Int(j));
+
+                    elseif j == 2
+                        linestyle_labels_2{end+1} = sprintf('TXA + Supplement: %.1f (mg)', Int(j));
+                    end
+                end
+            end
+            
+        end
+    end
+    
+    xlabel('Time (months)')
+    ylabel('Other Body Fe (g)')
+    ylim([0.05 0.4])
+    xlim([0 24])
+    xticks(0:3:24)
+    grid on
+    hold off   
+end
+
+legend(linestyle_handles_2, linestyle_labels_2, 'Location', 'Best', 'Orientation', 'horizontal')
+
 
 
 % plt2 = figure(2);
@@ -296,6 +290,11 @@ colors = [
 % legend(linestyle_handles_2, linestyle_labels_2, 'Location', 'best', 'Orientation', 'horizontal')
 %%
 
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%%%% SCENARIO 2: Anemia due to low iron intake and/or heavy period bleeding %%%%%%%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+
 %SS Anemia due to low iron intake and/or heavy period bleeding
 results_2 = cell(length(hb_int), length(Int), length(red_men), length(hev_per));
 
@@ -312,74 +311,74 @@ for j = 1:length(hb_int)
 end
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-%%%%% INTERVENTION 1: TXA only for steady-state anemia (Heavy periods) %%%%%%%%%%%
+%%%%% INTERVENTION 2.1: TXA only for steady-state anemia (Heavy periods) %%%%%%%%%%%
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
-% plt3 = figure(3);
-% plt3.Color = [1 1 1];
-% 
-% set(plt3, 'DefaultAxesColorOrder', colors,'DefaultAxesFontSize',14)
-% 
-% linestyle_handles_3 = [];
-% linestyle_labels_3 = {};
-% 
-% for i=2:length(red_men)
-%     subplot(2,length(red_men)-1,i-1)
-%     hold on
-%     for k=1:length(hb_int)
-%         for j=1:length(hev_per)
-%             linestyle = line_styles{mod(j-1, length(line_styles)) + 1}; 
-%             color_idx = mod(k-1, size(colors, 1)) + 1; 
-%             color = colors(color_idx, :);
-%             
-%             h3 = plot(results_2{k, 1, i, j}.T/30, results_2{k, 1, i, j}.Y(:, 2)*conv,'LineStyle', linestyle, 'Color', color, 'Linewidth', 2);
-%             
-%             if i == 2 && k == 1
-%                 linestyle_handles_3 = [linestyle_handles_3, h3];
-%                 
-%                 if hev_per(j) == 1
-%                     linestyle_labels_3{end+1} = sprintf('Normal Periods: %.1f mg/day', e1*1000);
-%                 else
-%                     linestyle_labels_3{end+1} = sprintf('%.1fx Heavier Periods: %.1f mg/day', hev_per(j),hev_per(j)*e1*1000);
-%                 end
-%             end
-%         end       
-%     end
-% 
-%     xlabel('Time (months)')
-%     ylabel('Hemoglobin (g/dL)')
-%     title(sprintf('TXA Efficiency: %.0f%% Reduction in Menstruation', red_men(i)))
-%     ylim([8 13])
-%     xlim([0 24])
-%     yticks(8:0.5:13)
-%     xticks(0:3:24)
-%     grid on
-%     hold off
-% 
-%     subplot(2,length(red_men)-1,i+length(red_men)-2)
-%     hold on
-%     for k=1:length(hb_int)
-%         for j=2:length(hev_per)
-%             linestyle = line_styles{mod(j-1, length(line_styles)) + 1}; 
-%             color_idx = mod(k-1, size(colors, 1)) + 1; 
-%             color = colors(color_idx, :);
-% 
-%             plot(results_2{k, 1, i, j}.T/30, results_2{k, 1, i, j}.Y(:, 1),'LineStyle', linestyle, 'Color', color, 'Linewidth', 2)
-%         end
-%     end
-%     
-%     xlabel('Time (months)')
-%     ylabel('Other Body Fe (g)')
-%     ylim([0.05 0.7])
-%     xlim([0 24])
-%     xticks(0:3:24)
-%     grid on
-%     hold off
-%     legend(linestyle_handles_3, linestyle_labels_3, 'Location', 'best', 'Orientation', 'horizontal')
-% end
+plt3 = figure(3);
+plt3.Color = [1 1 1];
+
+set(plt3, 'DefaultAxesColorOrder', colors,'DefaultAxesFontSize',14)
+
+linestyle_handles_3 = [];
+linestyle_labels_3 = {};
+
+for i=2:length(red_men)
+    subplot(2,length(red_men)-1,i-1)
+    hold on
+    for k=1:length(hb_int)
+        for j=1:length(hev_per)
+            linestyle = line_styles{mod(j-1, length(line_styles)) + 1}; 
+            color_idx = mod(k-1, size(colors, 1)) + 1; 
+            color = colors(color_idx, :);
+            
+            h3 = plot(results_2{k, 1, i, j}.T/30, results_2{k, 1, i, j}.Y(:, 2)*conv,'LineStyle', linestyle, 'Color', color, 'Linewidth', 2);
+            
+            if i == 2 && k == 1
+                linestyle_handles_3 = [linestyle_handles_3, h3];
+                
+                if hev_per(j) == 1
+                    linestyle_labels_3{end+1} = sprintf('Normal Periods: %.1f mg/day', e1*1000);
+                else
+                    linestyle_labels_3{end+1} = sprintf('%.1fx Heavier Periods: %.1f mg/day', hev_per(j),hev_per(j)*e1*1000);
+                end
+            end
+        end       
+    end
+
+    xlabel('Time (months)')
+    ylabel('Hemoglobin (g/dL)')
+    title(sprintf('TXA Efficiency: %.0f%% Reduction in Menstruation', red_men(i)))
+    ylim([8 13])
+    xlim([0 24])
+    yticks(8:0.5:13)
+    xticks(0:3:24)
+    grid on
+    hold off
+
+    subplot(2,length(red_men)-1,i+length(red_men)-2)
+    hold on
+    for k=1:length(hb_int)
+        for j=2:length(hev_per)
+            linestyle = line_styles{mod(j-1, length(line_styles)) + 1}; 
+            color_idx = mod(k-1, size(colors, 1)) + 1; 
+            color = colors(color_idx, :);
+
+            plot(results_2{k, 1, i, j}.T/30, results_2{k, 1, i, j}.Y(:, 1),'LineStyle', linestyle, 'Color', color, 'Linewidth', 2)
+        end
+    end
+    
+    xlabel('Time (months)')
+    ylabel('Other Body Fe (g)')
+    ylim([0.05 0.7])
+    xlim([0 24])
+    xticks(0:3:24)
+    grid on
+    hold off
+    legend(linestyle_handles_3, linestyle_labels_3, 'Location', 'best', 'Orientation', 'horizontal')
+end
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-%%%%% INTERVENTION 2: TXA + Supplement for steady-state anemia (Heavy periods) %%%%%%%%%%%
+%%%%% INTERVENTION 2.2: TXA + Supplement for steady-state anemia (Heavy periods) %%%%%%%%%%%
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
 plt4 = figure(4);
@@ -485,72 +484,40 @@ legend(linestyle_handles_2, linestyle_labels_2, 'Location', 'Best', 'Orientation
 
 
 
-%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-%%%%% INTERVENTION 3: TXA + 3 month only Supplement for steady-state anemia (Heavy periods) %%%%%%%%%%%
-%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%%%% INTERVENTION 2.3: TXA + 3 month only Supplement for steady-state anemia (Heavy periods) %%%%%%%%%%%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
 
 %SS Anemia due to low iron intake and/or heavy period bleeding
 % supplementation ends after 3 months only
-results_3_p1 = cell(length(hb_int), length(Int), length(red_men), length(hev_per));
+results_3= cell(length(hb_int), length(Int), length(red_men), length(hev_per));
 
 Tend_int = 3;                          % [months] time to run simulation
 
-% with supplement
+
 for j = 1:length(hb_int)
     for k=1:length(Int)
         for i=1:length(red_men)
             for l=1:length(hev_per)
                 OBI0 = ((hb_int/conv)*d+e1*hev_per(l))./eryth(hb_int/conv,h0,conv);
                 Int_ss = (e1*hev_per(l)+e2)./absp(hb_int/conv,conv); 
-                [results_3_p1{j, k, i, l}.T, results_3_p1{j, k, i, l}.Y] = ode45(@(t, x) ironsolve(t, x, Int_ss(j)+Int(k)/1000, hev_per(l)*e1*(1-red_men(i)/100), e2, d, h0, conv), [0 Tend_int]*30, [OBI0(j); hb_int(j)/conv]);
+                [results_3{j, k, i, l}.T, results_3{j, k, i, l}.Y] = ode45(@(t, x) ironsolve(t, x, Int_ss(j)+(t<=Tend_int)*Int(k)/1000, hev_per(l)*e1*(1-red_men(i)/100), e2, d, h0, conv), [0 Tend_int]*30, [OBI0(j); hb_int(j)/conv]);
             end
         end
     end
 end
 
-% without supplement
-results_3_p2 = cell(length(hb_int), length(Int), length(red_men), length(hev_per));
-%update supp vector
-Int_stop = zeros(size(Int)); 
 
-for j = 1:length(hb_int)
-    for k=1:length(Int)
-        for i=1:length(red_men)
-            for l=1:length(hev_per)
-                OBI0 = results_3_p1{j, k, i, l}.Y(end, 1);
-                HbFe0 = results_3_p1{j, k, i, l}.Y(end, 2); 
-                Int_ss = (e1*hev_per(l)+e2)./absp(hb_int/conv,conv); 
-                [results_3_p2{j, k, i, l}.T, results_3_p2{j, k, i, l}.Y] = ode45(@(t, x) ironsolve(t, x, Int_ss(j)+Int_stop(k)/1000, hev_per(l)*e1*(1-red_men(i)/100), e2, d, h0, conv), [0 Tend-Tend_int]*30, [OBI0; HbFe0]);
-            end
-        end
-    end
-end
+plt5 = figure(5);
 
-%join
+plt5.Color = [1 1 1];
 
-results_3 = cell(length(hb_int), length(Int), length(red_men), length(hev_per));
-
-for j = 1:length(hb_int)
-    for k=1:length(Int)
-        for i=1:length(red_men)
-            for l=1:length(hev_per)
-                results_3{j, k, i, l}.T = [results_3_p1{j, k, i, l}.T; (results_3_p2{j, k, i, l}.T + Tend_int*30)];
-                results_3{j, k, i, l}.Y = [results_3_p1{j, k, i, l}.Y; results_3_p2{j, k, i, l}.Y];
-            end
-        end
-    end
-end
-
-plt6 = figure(7);
-
-plt6.Color = [1 1 1];
-
-set(plt6, 'DefaultAxesColorOrder', colors,'DefaultAxesFontSize',14)
-linestyle_handles_4 = [];
-linestyle_labels_4 = {};
-color_handles_4 = [];
-color_labels_4 = {};
+set(plt5, 'DefaultAxesColorOrder', colors,'DefaultAxesFontSize',14)
+linestyle_handles_5 = [];
+linestyle_labels_5 = {};
+color_handles_5 = [];
+color_labels_5 = {};
 
 for i=2:length(red_men)
     subplot(2,length(red_men)-1,i-1)
@@ -565,16 +532,16 @@ for i=2:length(red_men)
                 linestyle = line_styles{mod(linestyle_counter-1, length(line_styles)) + 1};
                 linestyle_counter = linestyle_counter + 1;
 
-                h4 = plot(results_3{1, j, l, k}.T/30, results_3{1, j, l, k}.Y(:, 2)*conv,'LineStyle', linestyle, 'Color', color, 'Linewidth', 2);
-                h4 = plot(results_2{1, j, l, k}.T/30, results_2{1, j, l, k}.Y(:, 2)*conv,'LineStyle', linestyle, 'Color', color, 'Linewidth', 2);
+                h5 = plot(results_3{1, j, l, k}.T/30, results_3{1, j, l, k}.Y(:, 2)*conv,'LineStyle', linestyle, 'Color', color, 'Linewidth', 2);
+                h5 = plot(results_2{1, j, l, k}.T/30, results_2{1, j, l, k}.Y(:, 2)*conv,'LineStyle', linestyle, 'Color', color, 'Linewidth', 2);
                             
                 if i == 2 && j == 1 && l == 1
-                    color_handles_4 = [color_handles_4, h4];
+                    color_handles_5 = [color_handles_5, h5];
                     
                     if hev_per(k) == 1
-                        color_labels_4{end+1} = sprintf('Normal Periods: %.1f mg/day', e1*1000);
+                        color_labels_5{end+1} = sprintf('Normal Periods: %.1f mg/day', e1*1000);
                     else
-                        color_labels_4{end+1} = sprintf('%.1fx Heavier Periods: %.1f mg/day', hev_per(k),hev_per(k)*e1*1000);
+                        color_labels_5{end+1} = sprintf('%.1fx Heavier Periods: %.1f mg/day', hev_per(k),hev_per(k)*e1*1000);
                     end
                 end
             end
@@ -589,7 +556,7 @@ for i=2:length(red_men)
     yticks(8:0.5:14)
     xticks(0:3:24)
     grid on
-    legend(color_handles_4, color_labels_4, 'Location', 'Best', 'Orientation', 'horizontal')
+    legend(color_handles_5, color_labels_5, 'Location', 'Best', 'Orientation', 'horizontal')
     hold off
     
 
@@ -597,8 +564,8 @@ for i=2:length(red_men)
     linestyle_counter = 1;
     hold on
     
-    linestyle_handles_2 = [];
-    linestyle_labels_2 = {};
+    linestyle_handles_5 = [];
+    linestyle_labels_5 = {};
 
     for k=1:length(hev_per)
         for j=1:length(Int)
@@ -610,23 +577,23 @@ for i=2:length(red_men)
                 linestyle = line_styles{mod(linestyle_counter-1, length(line_styles)) + 1};
                 linestyle_counter = linestyle_counter + 1;
                 
-                h4 = plot(results_3{1, j, l, k}.T/30, results_3{1, j, l, k}.Y(:, 1),'LineStyle', linestyle, 'Color', color, 'Linewidth', 2);
-                h4 = plot(results_2{1, j, l, k}.T/30, results_2{1, j, l, k}.Y(:, 1),'LineStyle', linestyle, 'Color', color, 'Linewidth', 2);
+                h5 = plot(results_3{1, j, l, k}.T/30, results_3{1, j, l, k}.Y(:, 1),'LineStyle', linestyle, 'Color', color, 'Linewidth', 2);
+                h5 = plot(results_2{1, j, l, k}.T/30, results_2{1, j, l, k}.Y(:, 1),'LineStyle', linestyle, 'Color', color, 'Linewidth', 2);
                 
                 if k==1
-                    linestyle_handles_2 = [linestyle_handles_2, h4];
+                    linestyle_handles_5 = [linestyle_handles_5, h5];
 
                     if l == 1 && j == 1
-                        linestyle_labels_2{end+1} = sprintf('No Intervention');
+                        linestyle_labels_5{end+1} = sprintf('No Intervention');
                 
                     elseif j == 1 && l == i
-                        linestyle_labels_2{end+1} = sprintf('TXA Only');
+                        linestyle_labels_5{end+1} = sprintf('TXA Only');
                 
                     elseif j == 2 && l == 1
-                        linestyle_labels_2{end+1} = sprintf('Supplement Only: %.1f (mg)', Int(j));
+                        linestyle_labels_5{end+1} = sprintf('Supplement Only: %.1f (mg)', Int(j));
 
                     elseif j == 2
-                        linestyle_labels_2{end+1} = sprintf('TXA + Supplement: %.1f (mg)', Int(j));
+                        linestyle_labels_5{end+1} = sprintf('TXA + Supplement: %.1f (mg)', Int(j));
                     end
                 end
             end
@@ -643,215 +610,215 @@ for i=2:length(red_men)
     hold off   
 end
 
-legend(linestyle_handles_2, linestyle_labels_2, 'Location', 'Best', 'Orientation', 'horizontal')
+legend(linestyle_handles_5, linestyle_labels_5, 'Location', 'Best', 'Orientation', 'horizontal')
 
 
 %%%%%%%%% All interventions %%%%%%%%%%%
 
-% plt5= figure(5);
-% plt5.Color = [1 1 1];
-% 
-% set(plt5, 'DefaultAxesColorOrder', colors,'DefaultAxesFontSize',14)
-% 
-% linestyle_handles_4 = [];
-% linestyle_labels_4 = {};
-% color_handles_4 = [];
-% color_labels_4 = {};
-% 
-% for i=2:length(red_men)
-%     subplot(2,length(red_men)-1,i-1)
-%     hold on
-%     for j=1:length(Int)
-%         for l=1:length(hev_per)
-%             linestyle = line_styles{mod(l-1, length(line_styles)) + 1}; 
-%             color_idx = mod(j-1, size(colors, 1)) + 1; 
-%             color = colors(color_idx, :);
-% 
-%             h4 = plot(results_2{1, j, i, l}.T/30, results_2{1, j, i, l}.Y(:, 2)*conv,'LineStyle', linestyle, 'Color', color, 'Linewidth', 2);
-%             
-%             if i == 2 && j == 2
-%                 linestyle_handles_4 = [linestyle_handles_4, h4];
-%                 if hev_per(l) == 1
-%                     linestyle_labels_4{end+1} = sprintf('Normal Periods: %.1f mg/day', e1*1000);
-%                 else
-%                     linestyle_labels_4{end+1} = sprintf('%.1fx Heavier Periods: %.1f mg/day', hev_per(l),hev_per(l)*e1*1000);
-%                 end
-%             end
-%         end
-%     end
-% 
-%     xlabel('Time (months)')
-%     ylabel('Hemoglobin (g/dL)')
-%     title(sprintf('TXA Efficiency: %.0f%% Reduction in Menstruation', red_men(i)))
-%     ylim([8 13])
-%     xlim([0 24])
-%     yticks(8:0.5:13)
-%     xticks(0:3:24)
-%     grid on
-%     legend(linestyle_handles_4, linestyle_labels_4 ,'Location', 'best', 'Orientation', 'horizontal')
-%     hold off
-% 
-%     subplot(2,length(red_men)-1,i+length(red_men)-2)
-%     hold on
-%     for j=1:length(Int)
-%         for l=1:length(hev_per)
-%             linestyle = line_styles{mod(l-1, length(line_styles)) + 1}; 
-%             color_idx = mod(j-1, size(colors, 1)) + 1; 
-%             color = colors(color_idx, :);
-% 
-%             h4 = plot(results_2{1, j, i, l}.T/30, results_2{1, j, i, l}.Y(:, 1),'LineStyle', linestyle, 'Color', color, 'Linewidth', 2);
-%             if i == 2 && l == 1
-%                 color_handles_4 = [color_handles_4, h4];
-%                 color_labels_4{end+1} = sprintf('DI Supplement: %.0f (mg)', Int(j));
-%             end
-%         end
-%     end
-%     
-%     xlabel('Time (months)')
-%     ylabel('Other Body Fe (g)')
-%     ylim([0.08 0.5])
-%     xlim([0 24])
-%     xticks(0:3:24)
-%     grid on
-%     legend(color_handles_4, color_labels_4,'Location', 'best', 'Orientation', 'horizontal')
-%     hold off
-% end
+plt6= figure(6);
+plt6.Color = [1 1 1];
+
+set(plt6, 'DefaultAxesColorOrder', colors,'DefaultAxesFontSize',14)
+
+linestyle_handles_6 = [];
+linestyle_labels_6 = {};
+color_handles_6 = [];
+color_labels_6 = {};
+
+for i=2:length(red_men)
+    subplot(2,length(red_men)-1,i-1)
+    hold on
+    for j=1:length(Int)
+        for l=1:length(hev_per)
+            linestyle = line_styles{mod(l-1, length(line_styles)) + 1}; 
+            color_idx = mod(j-1, size(colors, 1)) + 1; 
+            color = colors(color_idx, :);
+
+            h6 = plot(results_2{1, j, i, l}.T/30, results_2{1, j, i, l}.Y(:, 2)*conv,'LineStyle', linestyle, 'Color', color, 'Linewidth', 2);
+            
+            if i == 2 && j == 2
+                linestyle_handles_6 = [linestyle_handles_6, h6];
+                if hev_per(l) == 1
+                    linestyle_labels_6{end+1} = sprintf('Normal Periods: %.1f mg/day', e1*1000);
+                else
+                    linestyle_labels_6{end+1} = sprintf('%.1fx Heavier Periods: %.1f mg/day', hev_per(l),hev_per(l)*e1*1000);
+                end
+            end
+        end
+    end
+
+    xlabel('Time (months)')
+    ylabel('Hemoglobin (g/dL)')
+    title(sprintf('TXA Efficiency: %.0f%% Reduction in Menstruation', red_men(i)))
+    ylim([8 13])
+    xlim([0 24])
+    yticks(8:0.5:13)
+    xticks(0:3:24)
+    grid on
+    legend(linestyle_handles_6, linestyle_labels_6 ,'Location', 'best', 'Orientation', 'horizontal')
+    hold off
+
+    subplot(2,length(red_men)-1,i+length(red_men)-2)
+    hold on
+    for j=1:length(Int)
+        for l=1:length(hev_per)
+            linestyle = line_styles{mod(l-1, length(line_styles)) + 1}; 
+            color_idx = mod(j-1, size(colors, 1)) + 1; 
+            color = colors(color_idx, :);
+
+            h6 = plot(results_2{1, j, i, l}.T/30, results_2{1, j, i, l}.Y(:, 1),'LineStyle', linestyle, 'Color', color, 'Linewidth', 2);
+            if i == 2 && l == 1
+                color_handles_6 = [color_handles_4, h4];
+                color_labels_6{end+1} = sprintf('DI Supplement: %.0f (mg)', Int(j));
+            end
+        end
+    end
+    
+    xlabel('Time (months)')
+    ylabel('Other Body Fe (g)')
+    ylim([0.08 0.5])
+    xlim([0 24])
+    xticks(0:3:24)
+    grid on
+    legend(color_handles_6, color_labels_6,'Location', 'best', 'Orientation', 'horizontal')
+    hold off
+end
 
 %% 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%%%% Plotting Different Scenarios  %%%%%%%%%%
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
-% % Expected steady state iron stores for a given chronic anemic [Hb]
-% OBI0_gcf = ((hb_int/conv)*d+e1)./eryth(hb_int/conv,h0,conv); % Fe in OBI based on SS anemia value
-% Int_ss_gcf = (e1+e2)./absp(hb_int/conv,conv);     % [g/day] daily intake to maintain SS anemia value
-% 
-% 
-% %SS Anemia due to low iron intake, for regular periods
-% results_gcf = cell(length(hb_int), length(Int), length(red_men));
-% 
-% for j = 1:length(hb_int)
-%     for k=1:length(Int)
-%         for i=1:length(red_men)
-%             [results_gcf{j, k, i}.T, results_gcf{j, k, i}.Y] = ode45(@(t, x) ironsolve(t, x, Int_ss_gcf(j)+Int(k)/1000, e1*(1-red_men(i)/100), e2, d, h0, conv), [0 Tend]*30, [OBI0_gcf(j); hb_int(j)/conv]);
-%         end
+% Expected steady state iron stores for a given chronic anemic [Hb]
+OBI0_gcf = ((hb_int/conv)*d+e1)./eryth(hb_int/conv,h0,conv); % Fe in OBI based on SS anemia value
+Int_ss_gcf = (e1+e2)./absp(hb_int/conv,conv);     % [g/day] daily intake to maintain SS anemia value
+
+
+%SS Anemia due to low iron intake, for regular periods
+results_gcf = cell(length(hb_int), length(Int), length(red_men));
+
+for j = 1:length(hb_int)
+    for k=1:length(Int)
+        for i=1:length(red_men)
+            [results_gcf{j, k, i}.T, results_gcf{j, k, i}.Y] = ode45(@(t, x) ironsolve(t, x, Int_ss_gcf(j)+Int(k)/1000, e1*(1-red_men(i)/100), e2, d, h0, conv), [0 Tend]*30, [OBI0_gcf(j); hb_int(j)/conv]);
+        end
+    end
+end
+
+linestyle_handles_7 = [];
+linestyle_labels_7 = {};
+color_handles_7 = [];
+color_labels_7 = {};
+
+gcf = figure(7);
+gcf.Color = [1 1 1];
+set(gcf, 'DefaultAxesColorOrder', colors,'DefaultAxesFontSize',14)
+
+% for i=1:length(dep_hb)
+%     for j=1:length(red_men)
+%         plot(results{i, j}.T/30, results{i, j}.Y(:, 2)*conv,'DisplayName', sprintf('%.1f%% anemic, %.0f%% reduction in menstruation', dep_hb(i), red_men(j)))
+%         hold on
 %     end
+%     hold on
 % end
-% 
-% linestyle_handles_9 = [];
-% linestyle_labels_9 = {};
-% color_handles_9 = [];
-% color_labels_9 = {};
-% 
-% gcf = figure(9);
-% gcf.Color = [1 1 1];
-% set(gcf, 'DefaultAxesColorOrder', colors,'DefaultAxesFontSize',14)
-% 
-% % for i=1:length(dep_hb)
-% %     for j=1:length(red_men)
-% %         plot(results{i, j}.T/30, results{i, j}.Y(:, 2)*conv,'DisplayName', sprintf('%.1f%% anemic, %.0f%% reduction in menstruation', dep_hb(i), red_men(j)))
-% %         hold on
-% %     end
-% %     hold on
-% % end
-% % hold off
-% 
-% subplot(2,2,1)
-% hold on
-% for i=1:length(hb_int)
-%     for j=1:length(Int)
-%         for k=1:length(red_men)
-%             linestyle = line_styles{mod(k-1, length(line_styles)) + 1}; 
-%             color_idx = mod(i-1, size(colors, 1)) + 1; 
-%             color = colors(color_idx, :);
-% 
-%             h9 = plot(results_gcf{i, j, k}.T/30, results_gcf{i, j, k}.Y(:, 2)*conv, 'Linestyle', linestyle, 'Color', color, 'LineWidth', 2);
-%              if i == 1 && j == 1
-%                 linestyle_handles_9 = [linestyle_handles_9, h9];
-%                 linestyle_labels_9{end+1} = sprintf('TXA Efficiency: %.0f%% Reduction in Menstruation', red_men(k));
-%              end
-%         end
-%     end
-% end
-% xlabel('Time (months)')
-% ylabel('Hemoglobin (g/dL)')
-% %ylim([10 13.5])
 % hold off
-% legend(linestyle_handles_9, linestyle_labels_9,'Location', 'best', 'Orientation', 'horizontal')
-% 
-% subplot(2,2,2)
-% hold on
-% 
-% % for i=1:length(dep_hb)
-% %     for j=1:length(red_men)
-% %         plot(results{i, j}.T/30, results{i, j}.Y(:, 1),'DisplayName', sprintf('%.1f%% anemic, %.0f%% reduction in menstruation', dep_hb(i), red_men(j)))
-% %         hold on
-% %     end
-% %     hold on
-% % end
-% % hold off
-% 
-% for i=1:length(hb_int)
-%     for j=1:length(Int)
-%         for k=1:length(red_men)
-% 
-%             linestyle = line_styles{mod(k-1, length(line_styles)) + 1}; 
-%             color_idx = mod(i-1, size(colors, 1)) + 1; 
-%             color = colors(color_idx, :);
-% 
-%             h9 = plot(results_gcf{i, j, k}.T/30, results_gcf{i, j, k}.Y(:, 1), 'Linestyle', linestyle, 'Color', color, 'Linewidth', 2);
-%             if k == 2 && j == 1
-%                 color_handles_9 = [color_handles_9, h9];
-%                 color_labels_9{end+1} = sprintf('Initial Hb: %.0f (mg/dL)', hb_int(i));
-%             end
-%         end
+
+subplot(2,2,1)
+hold on
+for i=1:length(hb_int)
+    for j=1:length(Int)
+        for k=1:length(red_men)
+            linestyle = line_styles{mod(k-1, length(line_styles)) + 1}; 
+            color_idx = mod(i-1, size(colors, 1)) + 1; 
+            color = colors(color_idx, :);
+
+            h7 = plot(results_gcf{i, j, k}.T/30, results_gcf{i, j, k}.Y(:, 2)*conv, 'Linestyle', linestyle, 'Color', color, 'LineWidth', 2);
+             if i == 1 && j == 1
+                linestyle_handles_7 = [linestyle_handles_7, h7];
+                linestyle_labels_7{end+1} = sprintf('TXA Efficiency: %.0f%% Reduction in Menstruation', red_men(k));
+             end
+        end
+    end
+end
+xlabel('Time (months)')
+ylabel('Hemoglobin (g/dL)')
+%ylim([10 13.5])
+hold off
+legend(linestyle_handles_7, linestyle_labels_7,'Location', 'best', 'Orientation', 'horizontal')
+
+subplot(2,2,2)
+hold on
+
+% for i=1:length(dep_hb)
+%     for j=1:length(red_men)
+%         plot(results{i, j}.T/30, results{i, j}.Y(:, 1),'DisplayName', sprintf('%.1f%% anemic, %.0f%% reduction in menstruation', dep_hb(i), red_men(j)))
+%         hold on
 %     end
+%     hold on
 % end
-% 
-% xlabel('Time (months)')
-% ylabel('Other Body Fe (g)')
-% %ylim([0 1])
 % hold off
-% legend(color_handles_9, color_labels_9,'Location', 'best', 'Orientation', 'horizontal')
-% 
-% subplot(2,2,3)
-% hold on
-% for i=1:length(hb_int)
-%     for j=1:length(Int)
-%         for k=1:length(red_men)
-%             linestyle = line_styles{mod(k-1, length(line_styles)) + 1}; 
-%             color_idx = mod(i-1, size(colors, 1)) + 1; 
-%             color = colors(color_idx, :);
-% 
-%             plot(results_gcf{i, j, k}.T/30, 100*absp(results_gcf{i, j, k}.Y(:, 2),conv), 'Linestyle', linestyle, 'Color', color, 'Linewidth', 2)
-%         end
-%     end
-% end
-% 
-% xlabel('Time (months)')
-% ylabel('% Absorption')
-% %ylim([0.011 0.013])
-% hold off
-% 
-% subplot(2,2,4)
-% hold on
-% 
-% for i=1:length(hb_int)
-%     for j=1:length(Int)
-%         for k=1:length(red_men)
-%             linestyle = line_styles{mod(k-1, length(line_styles)) + 1}; 
-%             color_idx = mod(i-1, size(colors, 1)) + 1; 
-%             color = colors(color_idx, :);
-% 
-%             plot(results_gcf{i, j, k}.T/30, (Int_ss(i)*1000+Int(j))*absp(results_gcf{i, j, k}.Y(:, 2),conv), 'Linestyle', linestyle, 'Color', color, 'Linewidth', 2)
-%         end
-%     end
-% end
-% 
-% xlabel('Time (months)')
-% ylabel('Actual Absorption [mg]')
-% %ylim([0.011 0.013])
-% hold off
-% 
-% 
-% %end
+
+for i=1:length(hb_int)
+    for j=1:length(Int)
+        for k=1:length(red_men)
+
+            linestyle = line_styles{mod(k-1, length(line_styles)) + 1}; 
+            color_idx = mod(i-1, size(colors, 1)) + 1; 
+            color = colors(color_idx, :);
+
+            h7 = plot(results_gcf{i, j, k}.T/30, results_gcf{i, j, k}.Y(:, 1), 'Linestyle', linestyle, 'Color', color, 'Linewidth', 2);
+            if k == 2 && j == 1
+                color_handles_7 = [color_handles_7, h7];
+                color_labels_7{end+1} = sprintf('Initial Hb: %.0f (mg/dL)', hb_int(i));
+            end
+        end
+    end
+end
+
+xlabel('Time (months)')
+ylabel('Other Body Fe (g)')
+%ylim([0 1])
+hold off
+legend(color_handles_7, color_labels_7,'Location', 'best', 'Orientation', 'horizontal')
+
+subplot(2,2,3)
+hold on
+for i=1:length(hb_int)
+    for j=1:length(Int)
+        for k=1:length(red_men)
+            linestyle = line_styles{mod(k-1, length(line_styles)) + 1}; 
+            color_idx = mod(i-1, size(colors, 1)) + 1; 
+            color = colors(color_idx, :);
+
+            plot(results_gcf{i, j, k}.T/30, 100*absp(results_gcf{i, j, k}.Y(:, 2),conv), 'Linestyle', linestyle, 'Color', color, 'Linewidth', 2)
+        end
+    end
+end
+
+xlabel('Time (months)')
+ylabel('% Absorption')
+%ylim([0.011 0.013])
+hold off
+
+subplot(2,2,4)
+hold on
+
+for i=1:length(hb_int)
+    for j=1:length(Int)
+        for k=1:length(red_men)
+            linestyle = line_styles{mod(k-1, length(line_styles)) + 1}; 
+            color_idx = mod(i-1, size(colors, 1)) + 1; 
+            color = colors(color_idx, :);
+
+            plot(results_gcf{i, j, k}.T/30, (Int_ss(i)*1000+Int(j))*absp(results_gcf{i, j, k}.Y(:, 2),conv), 'Linestyle', linestyle, 'Color', color, 'Linewidth', 2)
+        end
+    end
+end
+
+xlabel('Time (months)')
+ylabel('Actual Absorption [mg]')
+%ylim([0.011 0.013])
+hold off
+
+
+%end
